@@ -1,6 +1,9 @@
 # FM 413 Lecture 2
 
-# Intro
+# Load required libraries
+library(tidyverse)
+
+# 1. Samuelson Model
 
 # Parameters
 set.seed(123)
@@ -23,14 +26,17 @@ for (t in 3:T) {
   Y[t] <- C[t] + I[t]
 }
 
-# Plot results
-plot(1:T, Y, type = "l", col = "blue", main = "Samuelson Model", ylab = "Output (Y)", xlab = "Time")
-lines(1:T, C, col = "green", lty = 2)
-lines(1:T, I, col = "red", lty = 3)
-legend("topright", legend = c("Output (Y)", "Consumption (C)", "Investment (I)"),
-       col = c("blue", "green", "red"), lty = c(1, 2, 3))
+# Combine data for plotting
+samuelson_data <- data.frame(Time = 1:T, Output = Y, Consumption = C, Investment = I) %>%
+  pivot_longer(cols = -Time, names_to = "Variable", values_to = "Value")
 
-# Supply-Side Samuelson Model
+# Plot results with ggplot2
+ggplot(samuelson_data, aes(x = Time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  labs(title = "Samuelson Model", x = "Time", y = "Value") +
+  theme_minimal()
+
+# 2. Supply-Side Samuelson Model
 
 # Parameters
 A <- 1  # productivity
@@ -46,10 +52,15 @@ for (t in 3:T) {
   Y[t] <- A * K[t]^alpha * N^(1 - alpha)
 }
 
-# Plot capital stock and output
-par(mfrow = c(1, 2))
-plot(1:T, Y, type = "l", col = "blue", main = "Output (Y)", ylab = "Output", xlab = "Time")
-plot(1:T, K, type = "l", col = "purple", main = "Capital Stock (K)", ylab = "Capital Stock", xlab = "Time")
+# Combine data for plotting
+supply_data <- data.frame(Time = 1:T, Output = Y, Capital = K) %>%
+  pivot_longer(cols = -Time, names_to = "Variable", values_to = "Value")
+
+# Plot results with ggplot2
+ggplot(supply_data, aes(x = Time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  labs(title = "Supply-Side Samuelson Model", x = "Time", y = "Value") +
+  theme_minimal()
 
 # 3. Real Business Cycle (RBC) Model (Deterministic)
 
@@ -68,11 +79,18 @@ for (t in 3:T) {
   K[t+1] <- beta * (A_t * alpha * K[t]^(alpha-1) * L[t]^(1 - alpha) + 1 - delta)
 }
 
-# Plot consumption, labor, and capital
-par(mfrow = c(1, 3))
-plot(1:T, C, type = "l", col = "green", main = "Consumption (C)", ylab = "Consumption", xlab = "Time")
-plot(1:T, L, type = "l", col = "orange", main = "Labor (L)", ylab = "Labor", xlab = "Time")
-plot(1:T, K, type = "l", col = "purple", main = "Capital (K)", ylab = "Capital", xlab = "Time")
+# Truncate K to length T
+K <- K[1:T]
+
+# Combine data for plotting
+rbc_deterministic_data <- data.frame(Time = 1:T, Consumption = C, Labor = L, Capital = K) %>%
+  pivot_longer(cols = -Time, names_to = "Variable", values_to = "Value")
+
+# Plot results with ggplot2
+ggplot(rbc_deterministic_data, aes(x = Time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  labs(title = "Deterministic RBC Model", x = "Time", y = "Value") +
+  theme_minimal()
 
 
 # 4. Stochastic RBC Model
@@ -95,9 +113,114 @@ for (t in 3:T) {
   K[t+1] <- beta * (exp(z[t]) * alpha * K[t]^(alpha-1) * L[t]^(1 - alpha) + 1 - delta)
 }
 
-# Plot productivity and output
-par(mfrow = c(1, 2))
-plot(1:T, z, type = "l", col = "red", main = "Productivity (z)", ylab = "z", xlab = "Time")
-plot(1:T, Y, type = "l", col = "blue", main = "Output (Y)", ylab = "Output", xlab = "Time")
+# Combine data for plotting
+stochastic_rbc_data <- data.frame(Time = 1:T, Productivity = z, Output = Y) %>%
+  pivot_longer(cols = -Time, names_to = "Variable", values_to = "Value")
 
+# Plot results with ggplot2
+ggplot(stochastic_rbc_data, aes(x = Time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  labs(title = "Stochastic RBC Model", x = "Time", y = "Value") +
+  theme_minimal()
+
+#Impulse response functions
+
+# Load required libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Parameters
+T <- 20              # Time periods for IRFs
+beta <- 0.96         # Discount factor
+alpha <- 0.33        # Capital share in production
+rho <- 0.9           # Persistence of productivity shock
+sigma <- 0.02        # Standard deviation of productivity shock
+nu <- 1              # CRRA coefficient for consumption
+eta <- 1.5           # Weight on leisure
+shock_time <- 5      # Time of the productivity shock
+
+# Simulate RBC model with one-time productivity shock
+simulate_irf <- function(depreciation_rate) {
+  # Initialize variables
+  K <- rep(5, T + 1)    # Capital stock (initial value)
+  C <- rep(0, T)        # Consumption
+  I <- rep(0, T)        # Investment
+  H <- rep(0.3, T)      # Hours worked
+  Y <- rep(0, T)        # Output
+  Z <- rep(0, T)        # Productivity (log-level)
+  
+  # Introduce a one-time shock at `shock_time`
+  Z[shock_time] <- sigma
+  
+  # Solve the model
+  for (t in 1:T) {
+    # Marginal utility of consumption and labor-leisure trade-off
+    U_C <- function(C) C^(-nu)
+    U_L <- function(H) eta * (1 - H)^(-nu)
+    
+    # Marginal product of labor and capital
+    MPL <- function(K, H, Z) (1 - alpha) * exp(Z) * K^alpha * H^(-alpha)
+    MPK <- function(K, H, Z) alpha * exp(Z) * K^(alpha - 1) * H^(1 - alpha)
+    
+    # Labor supply condition
+    H[t] <- optimize(
+      function(h) abs(U_L(h) - MPL(K[t], h, Z[t]) / U_C((1 - depreciation_rate) * K[t] + MPK(K[t], h, Z[t]))),
+      interval = c(0.01, 0.99)
+    )$minimum
+    
+    # Output
+    Y[t] <- exp(Z[t]) * K[t]^alpha * H[t]^(1 - alpha)
+    
+    # Investment and consumption
+    I[t] <- Y[t] - C[t]
+    C[t] <- Y[t] - depreciation_rate * K[t]
+    
+    # Capital accumulation
+    if (t < T) {
+      K[t + 1] <- beta * MPK(K[t], H[t], Z[t]) * K[t] + (1 - depreciation_rate) * K[t]
+    }
+  }
+  
+  # Combine results into a data frame
+  data.frame(
+    Time = 1:T,
+    Capital = K[1:T],
+    Investment = I,
+    Consumption = C,
+    Output = Y,
+    HoursWorked = H,
+    Productivity = exp(Z)  # Convert log productivity to levels
+  )
+}
+
+# Simulate for 100% depreciation
+irf_full_depreciation <- simulate_irf(depreciation_rate = 1)
+
+# Scale results to percentage deviations from pre-shock levels
+calculate_deviations <- function(data, shock_time) {
+  pre_shock <- data[shock_time - 1, ]
+  data %>%
+    mutate(across(-Time, ~ 100 * (. - pre_shock[.col]) / pre_shock[.col]))
+}
+
+# Scale and format
+scaled_irf_full <- calculate_deviations(irf_full_depreciation, shock_time)
+
+# Pivot for ggplot
+scaled_irf_full_long <- scaled_irf_full %>%
+  pivot_longer(cols = -Time, names_to = "Variable", values_to = "Value")
+
+# Plot IRFs
+ggplot(scaled_irf_full_long, aes(x = Time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  facet_wrap(~ Variable, scales = "free_y") +
+  labs(
+    title = "IRFs for nu = 1, 100% Depreciation",
+    x = "Time",
+    y = "Percentage Deviation",
+    color = "Variable"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
